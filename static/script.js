@@ -1,10 +1,9 @@
 const ENDPOINT = 'https://tiktok-tts.weilnet.workers.dev'
 
-const TEXT_BYTE_LIMIT = 300
 const textEncoder = new TextEncoder()
 
 window.onload = () => {
-    document.getElementById('charcount').textContent = `0/${TEXT_BYTE_LIMIT}`
+    document.getElementById('charcount').textContent = `0`
     const req = new XMLHttpRequest()
     req.open('GET', `${ENDPOINT}/api/status`, false)
     req.send()
@@ -63,15 +62,32 @@ const enableControls = () => {
 const onTextareaInput = () => {
     const text = document.getElementById('text').value
     const textEncoded = textEncoder.encode(text)
-
-    document.getElementById('charcount').textContent = `${textEncoded.length <= 999 ? textEncoded.length : 999}/${TEXT_BYTE_LIMIT}`
-
-    if (textEncoded.length > TEXT_BYTE_LIMIT) {
-        document.getElementById('charcount').style.color = 'red'
-    } else {
-        document.getElementById('charcount').style.color = 'black'
-    }
+    document.getElementById('charcount').textContent = `${textEncoded.length}`
 }
+
+function splitString(str, maxLength) {
+    const encodedString = new TextEncoder().encode(str);
+    const length = encodedString.length;
+    const substrings = [];
+  
+    let start = 0;
+    let end = maxLength;
+  
+    while (start < length) {
+      while (encodedString[end] && encodedString[end] >> 6 === 2) {
+        end--;
+      }
+      while (encodedString[end] && encodedString[end] >> 6 !== 2 && str[end] !== " ") {
+        end--;
+      }
+  
+      substrings.push(new TextDecoder().decode(encodedString.slice(start, end)));
+      start = end;
+      end = start + maxLength;
+    }
+  
+    return substrings;
+  }
 
 const submitForm = () => {
     clearError()
@@ -92,27 +108,30 @@ const submitForm = () => {
         return
     }
 
-    if (textLength > TEXT_BYTE_LIMIT) {
-        setError(`Text must not be over ${TEXT_BYTE_LIMIT} UTF-8 characters (currently at ${textLength})`)
-        enableControls()
-        return
-    }
-
     try {
         const req = new XMLHttpRequest()
-        req.open('POST', `${ENDPOINT}/api/generation`, false)
-        req.setRequestHeader('Content-Type', 'application/json')
-        req.send(JSON.stringify({
-            text: text,
-            voice: voice
-        }))
-
-        let resp = JSON.parse(req.responseText)
-        if (resp.data === null) {
-            setError(`<b>Generation failed</b><br/> ("${resp.error}")`)
-        } else {
-            setAudio(resp.data, text)
-        }  
+        var text_array=splitString(text,300)
+        var decoded_audio;
+        var final_audio;
+        
+        for (var i = 0; i < text_array.length; i++) {
+            req.open('POST', `${ENDPOINT}/api/generation`, false)
+            req.setRequestHeader('Content-Type', 'application/json')
+            req.send(JSON.stringify({
+                text: text_array[i],
+                voice: voice
+            }))
+            let resp = JSON.parse(req.responseText)
+            if (resp.data === null) {
+                setError(`<b>Generation failed</b><br/> ("${resp.error}")`)
+            } else {
+                var decoded=atob(resp.data)
+                decoded_audio=decoded_audio+decoded
+            }  
+          }
+          console.log(text_array)
+          final_audio=btoa(decoded_audio)
+          setAudio(final_audio, text)
     } catch {
         setError('Error submitting form (printed to F12 console)')
         console.log('^ Please take a screenshot of this and create an issue on the GitHub repository if one does not already exist :)')
